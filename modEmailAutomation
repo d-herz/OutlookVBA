@@ -1,0 +1,196 @@
+Option Explicit
+
+Public SenderRules As Variant
+Public SubjectRules As Variant
+Public MovedEmails As Collection  ' for logging moved emails
+
+
+
+Sub InitializeRules()
+
+    ' Sender based rules
+    SenderRules = Array( _
+        Array("BT-WFPROD@cdmsmithonline.onmicrosoft.com", "From CDM\From Workflow Mailer"), _
+        Array("bouchardab@cdmsmith.com", "From CDM\From Anthony Bouchard"), _
+        Array("hyresdf@cdmsmith.com", "From E. Hartford Team\From Me"), _
+        Array("HR-Communications@cdmsmith.com", "From CDM\From HR") _
+    )
+    
+    ' Subject based rules (Not Used yet)
+    SubjectRules = Array( _
+        Array("Target Subject 1", "Target Folder 1"), _
+        Array("Target Subject 2", "Target Folder 2") _
+    )
+
+End Sub
+
+
+
+Sub ProcessMail(mail As Outlook.MailItem)
+
+    Dim i As Long
+    Dim senderAddress As String
+    Dim exchUser As Outlook.ExchangeUser
+    
+    ' Initialize rules if needed
+    If IsEmpty(SenderRules) Then InitializeRules
+    
+    
+    ' Get proper sender email (not internal exchange nonsense)
+    senderAddress = mail.SenderEmailAddress
+    
+    If mail.SenderEmailType = "EX" Then
+        Set exchUser = mail.Sender.GetExchangeUser
+        If Not exchUser Is Nothing Then
+            senderAddress = exchUser.PrimarySmtpAddress
+        End If
+    End If
+    
+    Debug.Print senderAddress
+    
+    ' Check sender rules
+    For i = LBound(SenderRules) To UBound(SenderRules)
+        Debug.Print mail.SenderEmailAddress
+        If LCase(senderAddress) = LCase(SenderRules(i)(0)) Then
+        
+            MoveEmail mail, SenderRules(i)(1)
+            Exit Sub
+            
+        End If
+        
+    Next i
+    
+    ' Check subject rules
+    For i = LBound(SubjectRules) To UBound(SubjectRules)
+        Debug.Print mail.SenderEmailAddress
+        If InStr(1, mail.Subject, SubjectRules(i)(0), vbTextCompare) > 0 Then
+        
+            MoveEmail mail, SubjectRules(i)(1)
+            Exit Sub
+            
+        End If
+        
+    Next i
+
+End Sub
+
+
+Sub MoveEmail(mail As Outlook.MailItem, ByVal FolderPath As String)
+
+    Dim ns As Outlook.NameSpace
+    Dim rootFolder As Outlook.Folder
+    Dim targetFolder As Outlook.Folder
+    Dim folderNames() As String
+    Dim i As Long
+    Dim nextFolder As Outlook.Folder
+    
+    Dim logEntry As String
+    
+    Set ns = Application.GetNamespace("MAPI")
+    Set rootFolder = ns.folders(mail.Parent.Parent.Name)
+    
+    folderNames = Split(FolderPath, "\")
+    
+    Set targetFolder = rootFolder
+    
+    For i = LBound(folderNames) To UBound(folderNames)
+    
+        Set nextFolder = Nothing
+        
+        On Error Resume Next
+        Set nextFolder = targetFolder.folders(folderNames(i))
+        On Error GoTo 0
+        
+        If nextFolder Is Nothing Then
+            Set nextFolder = targetFolder.folders.Add(folderNames(i))
+        End If
+        
+        Set targetFolder = nextFolder
+        
+    Next i
+    
+    
+    mail.Move targetFolder
+    
+    Debug.Print "Moving: " & mail.Subject & " ? " & FolderPath
+    
+    ' Log the move
+    If MovedEmails Is Nothing Then Set MovedEmails = New Collection
+    Dim cleanSender As String
+cleanSender = mail.SenderEmailAddress
+
+' If Exchange sender, get primary SMTP
+If mail.SenderEmailType = "EX" Then
+    Dim exchUser As Outlook.ExchangeUser
+    Set exchUser = mail.Sender.GetExchangeUser
+    If Not exchUser Is Nothing Then
+        cleanSender = exchUser.PrimarySmtpAddress
+    Else
+        ' Fallback for automated email (like the daily summary)
+        cleanSender = "Self Generated"
+    End If
+End If
+    logEntry = Format(Now, "hh:mm AM/PM") & " | " & cleanSender & " | " & mail.Subject & " | " & FolderPath
+    MovedEmails.Add logEntry
+
+End Sub
+
+
+Sub SendDailySummary()
+
+    Dim outMail As Outlook.MailItem
+    Dim item As Variant
+    Dim bodyText As String
+    
+    If MovedEmails Is Nothing Or MovedEmails.Count = 0 Then Exit Sub
+    
+    Set outMail = Application.CreateItem(olMailItem)
+    
+    bodyText = "Daily Email Automation Summary" & vbCrLf & vbCrLf
+    
+    For Each item In MovedEmails
+        bodyText = bodyText & item & vbCrLf
+    Next item
+    
+    bodyText = bodyText & vbCrLf & "Total moved today: " & MovedEmails.Count
+    
+    With outMail
+        .To = "hyresdf@cdmsmith.com" ' your email
+        .Subject = "Daily Email Automation Summary for " & Format(Date, "mmmm d") & DaySuffix(Day(Date))
+        .Body = bodyText
+        .Send
+    End With
+    
+    ' Clear the log
+    Set MovedEmails = Nothing
+
+End Sub
+
+
+
+
+
+Function DaySuffix(d As Integer) As String
+    Select Case d Mod 10
+        Case 1
+            If d = 11 Then
+                DaySuffix = "th"
+            Else
+                DaySuffix = "st"
+            End If
+        Case 2
+            If d = 12 Then
+                DaySuffix = "th"
+            Else
+                DaySuffix = "nd"
+            End If
+        Case 3
+            If d = 13 Then
+                DaySuffix = "th"
+            Else
+                DaySuffix = "rd"
+            End If
+        Case Else
+            DaySuffix = "th"
+    End Select
+End Function
