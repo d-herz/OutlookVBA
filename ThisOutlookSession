@@ -1,0 +1,22 @@
+Option Explicit
+
+Private Sub Application_NewMailEx(ByVal EntryIDCollection As String)
+
+    Dim arrIDs() As String
+    Dim i As Long
+    Dim item As Object
+    
+    arrIDs = Split(EntryIDCollection, ",")
+    
+    For i = LBound(arrIDs) To UBound(arrIDs)
+    
+        Set item = Application.Session.GetItemFromID(arrIDs(i))
+        
+        If TypeOf item Is Outlook.MailItem Then
+            ProcessMail item
+        End If
+        
+    Next i
+
+End Sub
+
