@@ -1,22 +1,70 @@
+'========================================================================
+' Outlook Email Automation Module
+' Author: DFH
+' March, 2026
+'========================================================================
+' Purpose:
+'   - Automatically organizes incoming Outlook emails by sender or subject
+'     into specified folders.
+'   - Logs moved emails and sends a daily summary email.
+'
+' How it works:
+'   1. This module defines rules (sender and subject) and the main processing
+'      routines to move emails and log them.
+'   2. ThisOutlookSession contains event handlers that call ProcessMail
+'      when new mail arrives and start the daily summary timer when Outlook starts.
+'   3. Daily summary is sent using a timer loop (avoids Application.OnTime issues).
+'
+' Usage / Notes:
+'   - Place this code in a **standard module** (e.g., modEmailAutomation).
+'   - Ensure macros are enabled in Outlook.
+'   - Configure sender-based rules in InitializeRules().
+'   - Optional: Configure subject-based rules similarly.
+'   - StartDailySummaryTimer allows configuring the summary send time.
+'   - Debug.Print statements can be viewed in the Immediate Window (Ctrl+G).
+'   - Nested folders are supported via "\" in folder paths.
+'========================================================================
+'========================================================================
+'========================================================================
+
 Option Explicit
 
-Public SenderRules As Variant
-Public SubjectRules As Variant
-Public MovedEmails As Collection  ' for logging moved emails
 
+'=============================
+' Global Variables
+'=============================
+Public SenderRules As Variant       ' Array storing rules based on sender email addresses
+Public SubjectRules As Variant      ' Array storing rules based on email subjects (currently placeholder)
+Public MovedEmails As Collection    ' Collection to log all emails that were moved during the day
 
-
+'=============================
+' Initialize Email Rules
+'=============================
 Sub InitializeRules()
 
-    ' Sender based rules
+    '-----------------------------
+    ' Define sender-based rules
+    '-----------------------------
+    ' Each entry: Array("SenderEmailAddress", "TargetFolderPath")
+    ' TargetFolderPath can include nested folders separated by "\"
+    ' Example: "From E. Hartford Team\From Me" -> "From Me" inside parent folder
     SenderRules = Array( _
         Array("BT-WFPROD@cdmsmithonline.onmicrosoft.com", "From CDM\From Workflow Mailer"), _
         Array("bouchardab@cdmsmith.com", "From CDM\From Anthony Bouchard"), _
         Array("hyresdf@cdmsmith.com", "From E. Hartford Team\From Me"), _
+        Array("no-reply@spaceiq.com", "From SpaceIQ Seating"), _
+        Array("notifications_cdmsmith@engage.mail.microsoft", "From CDM\From Viva Engage"), _
+        Array("noreply_cdmsmith@engage.mail.microsoft", "From CDM\From Viva Engage"), _
+        Array("MarComm-disp@cdmsmith.com", "From CDM\From Marketing and Communications"), _
+        Array("mentorship@togetherplatform.com", "From CDM\From Career Compass"), _
+        Array("ITHelp@cdmsmith.com", "From CDM\From IT"), _
         Array("HR-Communications@cdmsmith.com", "From CDM\From HR") _
     )
     
-    ' Subject based rules (Not Used yet)
+    '-----------------------------
+    ' Define subject-based rules
+    '-----------------------------
+    ' Currently placeholder; same format as SenderRules
     SubjectRules = Array( _
         Array("Target Subject 1", "Target Folder 1"), _
         Array("Target Subject 2", "Target Folder 2") _
@@ -24,8 +72,45 @@ Sub InitializeRules()
 
 End Sub
 
+'===========================================================
+' NEW: Setup Daily Task (The "Timer" Replacement)
+'===========================================================
+Sub SetupDailyTask()
+    Dim taskItem As Outlook.taskItem
+    Dim folder As Outlook.folder
+    Dim ns As Outlook.NameSpace
+    
+    Set ns = Application.GetNamespace("MAPI")
+    Set folder = ns.GetDefaultFolder(olFolderTasks)
+    
+    ' Look for existing monitor task
+    On Error Resume Next
+    Set taskItem = folder.Items("Email Summary Monitor")
+    On Error GoTo 0
+    
+    ' Create it if it doesn't exist
+    If taskItem Is Nothing Then
+        Set taskItem = Application.CreateItem(olTaskItem)
+        taskItem.Subject = "Email Summary Monitor"
+    End If
+    
+    ' Set the reminder for 3:15 PM
+    taskItem.ReminderSet = True
+    taskItem.ReminderTime = DateValue(Now) & " 16:30:00"
+    
+    ' If it's already past 3:15 PM today, move it to tomorrow
+    If taskItem.ReminderTime < Now Then
+        taskItem.ReminderTime = DateAdd("d", 1, taskItem.ReminderTime)
+    End If
+    
+    taskItem.Save
+    Debug.Print "Daily Summary successfully scheduled for: " & taskItem.ReminderTime
+End Sub
 
 
+'=============================
+' Process Incoming Emails
+'=============================
 Sub ProcessMail(mail As Outlook.MailItem)
 
     Dim i As Long
@@ -34,9 +119,11 @@ Sub ProcessMail(mail As Outlook.MailItem)
     
     ' Initialize rules if needed
     If IsEmpty(SenderRules) Then InitializeRules
-    
-    
-    ' Get proper sender email (not internal exchange nonsense)
+     
+    '-----------------------------
+    ' Get sender email
+    ' Handle Exchange internal addresses (EX type)
+    '-----------------------------
     senderAddress = mail.SenderEmailAddress
     
     If mail.SenderEmailType = "EX" Then
@@ -48,7 +135,9 @@ Sub ProcessMail(mail As Outlook.MailItem)
     
     Debug.Print senderAddress
     
-    ' Check sender rules
+    '-----------------------------
+    ' Check against sender rules
+    '-----------------------------
     For i = LBound(SenderRules) To UBound(SenderRules)
         Debug.Print mail.SenderEmailAddress
         If LCase(senderAddress) = LCase(SenderRules(i)(0)) Then
@@ -60,7 +149,10 @@ Sub ProcessMail(mail As Outlook.MailItem)
         
     Next i
     
-    ' Check subject rules
+    '-------------------------------------
+    ' Apply subject rules (optional)
+    ' This might get removed if never used
+    '-------------------------------------
     For i = LBound(SubjectRules) To UBound(SubjectRules)
         Debug.Print mail.SenderEmailAddress
         If InStr(1, mail.Subject, SubjectRules(i)(0), vbTextCompare) > 0 Then
@@ -74,25 +166,32 @@ Sub ProcessMail(mail As Outlook.MailItem)
 
 End Sub
 
+'=============================
+' Move Email to Target Folder
+'=============================
 
 Sub MoveEmail(mail As Outlook.MailItem, ByVal FolderPath As String)
 
     Dim ns As Outlook.NameSpace
-    Dim rootFolder As Outlook.Folder
-    Dim targetFolder As Outlook.Folder
+    Dim rootFolder As Outlook.folder
+    Dim targetFolder As Outlook.folder
     Dim folderNames() As String
     Dim i As Long
-    Dim nextFolder As Outlook.Folder
-    
+    Dim nextFolder As Outlook.folder
     Dim logEntry As String
     
+    '-----------------------------
+    ' Root folder reference
+    ' If the target folder is a parent-level folder outside Inbox, this handles it
+    '-----------------------------
     Set ns = Application.GetNamespace("MAPI")
     Set rootFolder = ns.folders(mail.Parent.Parent.Name)
     
+    ' Split path to handle nested folders
     folderNames = Split(FolderPath, "\")
-    
     Set targetFolder = rootFolder
     
+    ' Loop through folder path; create folders if they don't exist
     For i = LBound(folderNames) To UBound(folderNames)
     
         Set nextFolder = Nothing
@@ -109,40 +208,58 @@ Sub MoveEmail(mail As Outlook.MailItem, ByVal FolderPath As String)
         
     Next i
     
-    
-    mail.Move targetFolder
-    
-    Debug.Print "Moving: " & mail.Subject & " ? " & FolderPath
-    
-    ' Log the move
+     '-----------------------------
+    ' Log moved email
+    '-----------------------------
     If MovedEmails Is Nothing Then Set MovedEmails = New Collection
     Dim cleanSender As String
-cleanSender = mail.SenderEmailAddress
+    cleanSender = mail.SenderEmailAddress
 
-' If Exchange sender, get primary SMTP
-If mail.SenderEmailType = "EX" Then
-    Dim exchUser As Outlook.ExchangeUser
-    Set exchUser = mail.Sender.GetExchangeUser
-    If Not exchUser Is Nothing Then
-        cleanSender = exchUser.PrimarySmtpAddress
-    Else
-        ' Fallback for automated email (like the daily summary)
-        cleanSender = "Self Generated"
+    ' If Exchange sender, get primary SMTP
+    If mail.SenderEmailType = "EX" Then
+        Dim exchUser As Outlook.ExchangeUser
+        Set exchUser = mail.Sender.GetExchangeUser
+        If Not exchUser Is Nothing Then
+            cleanSender = exchUser.PrimarySmtpAddress
+        Else
+            ' Fallback for automated email (like the daily summary)
+            cleanSender = "Self Generated"
+        End If
     End If
-End If
+    
+    ' Format log entry: Time | Sender | Subject | Target Folder
     logEntry = Format(Now, "hh:mm AM/PM") & " | " & cleanSender & " | " & mail.Subject & " | " & FolderPath
     MovedEmails.Add logEntry
+    
+    ' Move the email to the target folder
+    mail.Move targetFolder
+
+    Debug.Print "Moving: " & mail.Subject & " ? " & FolderPath
+    
 
 End Sub
 
-
+'=============================
+' Send Daily Summary Email
+'=============================
 Sub SendDailySummary()
 
     Dim outMail As Outlook.MailItem
     Dim item As Variant
     Dim bodyText As String
     
-    If MovedEmails Is Nothing Or MovedEmails.Count = 0 Then Exit Sub
+    
+    ' 1. Check if the collection even exists first
+    If MovedEmails Is Nothing Then
+        Debug.Print "No emails moved today (Collection is Nothing)."
+        Exit Sub
+    End If
+    
+    ' 2. If it exists, check if it's empty
+    If MovedEmails.Count = 0 Then
+        Debug.Print "No emails moved today (Count is 0)."
+        Exit Sub
+    End If
     
     Set outMail = Application.CreateItem(olMailItem)
     
@@ -152,8 +269,11 @@ Sub SendDailySummary()
         bodyText = bodyText & item & vbCrLf
     Next item
     
+    
+    ' Build email body
     bodyText = bodyText & vbCrLf & "Total moved today: " & MovedEmails.Count
     
+    ' Send the email
     With outMail
         .To = "hyresdf@cdmsmith.com" ' your email
         .Subject = "Daily Email Automation Summary for " & Format(Date, "mmmm d") & DaySuffix(Day(Date))
@@ -161,15 +281,17 @@ Sub SendDailySummary()
         .Send
     End With
     
-    ' Clear the log
+    ' Clear the log for the next day
     Set MovedEmails = Nothing
 
 End Sub
 
 
 
-
-
+'=============================
+' Helper Function: Day Suffix
+'=============================
+' Returns correct ordinal suffix for a day (1st, 2nd, 3rd, 4th, etc.)
 Function DaySuffix(d As Integer) As String
     Select Case d Mod 10
         Case 1
