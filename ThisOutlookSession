@@ -1,17 +1,70 @@
+'========================================================================
+' ThisOutlookSession Module: Event Handlers for Email Automation
+'========================================================================
+'
+' Purpose:
+'   - Automatically triggers the email processing routine whenever new mail
+'     arrives in Outlook.
+'   - Schedules the daily summary email when Outlook starts.
+'
+' How it works:
+'   1. Application_NewMailEx fires whenever one or more new emails arrive.
+'      It passes a collection of EntryIDs representing the new items.
+'   2. Each EntryID is converted to an Outlook.MailItem object.
+'   3. If the item is an email, it calls ProcessMail (defined in modEmailAutomation)
+'      to handle moving the email to the correct folder and logging it.
+'   4. Application_Startup schedules the first daily summary email automatically.
+'
+' Notes:
+'   - Ensure this code is in "ThisOutlookSession" and that macros are enabled.
+'   - Application_NewMailEx triggers for all incoming mail, including automated messages.
+'   - If testing, keep the Immediate Window open to see debug prints from ProcessMail.
+'
+'========================================================================
+
 Option Explicit
 
+Private WithEvents objReminders As Outlook.Reminders
+
+'---------------------------------------------------------------
+' Triggered automatically when Outlook starts
+'---------------------------------------------------------------
+
+Private Sub Application_Startup()
+    Set objReminders = Outlook.Application.Reminders
+    SetupDailyTask ' Calls the sub in your modEmailAutomation
+    Debug.Print "Outlook startup detected."
+End Sub
+
+
+Private Sub objReminders_ReminderFire(ByVal ReminderObject As Reminder)
+    If ReminderObject.Caption = "Email Summary Monitor" Then
+        SendDailySummary
+        SetupDailyTask ' Reschedules for tomorrow
+        ReminderObject.Dismiss ' Closes the reminder window automatically
+    End If
+End Sub
+
+
+'---------------------------------------------------------------
+' Triggered automatically when new mail arrives in Outlook
+'---------------------------------------------------------------
 Private Sub Application_NewMailEx(ByVal EntryIDCollection As String)
 
     Dim arrIDs() As String
     Dim i As Long
     Dim item As Object
     
+    ' Split the EntryID collection into individual IDs
     arrIDs = Split(EntryIDCollection, ",")
     
+    ' Loop through each new item
     For i = LBound(arrIDs) To UBound(arrIDs)
-    
+        
+        ' Get the Outlook item from its EntryID
         Set item = Application.Session.GetItemFromID(arrIDs(i))
         
+        ' Only process if the item is a MailItem
         If TypeOf item Is Outlook.MailItem Then
             ProcessMail item
         End If
@@ -19,4 +72,7 @@ Private Sub Application_NewMailEx(ByVal EntryIDCollection As String)
     Next i
 
 End Sub
+
+
+
 
