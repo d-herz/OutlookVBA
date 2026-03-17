@@ -20,7 +20,7 @@
 '   - Ensure macros are enabled in Outlook.
 '   - Configure sender-based rules in InitializeRules().
 '   - Optional: Configure subject-based rules similarly.
-'   - StartDailySummaryTimer allows configuring the summary send time.
+'   - SetupDailyTask allows configuring the summary send time.
 '   - Debug.Print statements can be viewed in the Immediate Window (Ctrl+G).
 '   - Nested folders are supported via "\" in folder paths.
 '========================================================================
