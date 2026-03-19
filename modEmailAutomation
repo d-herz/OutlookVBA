@@ -29,7 +29,6 @@
 
 Option Explicit
 
-
 '=============================
 ' Global Variables
 '=============================
@@ -50,6 +49,8 @@ Sub InitializeRules()
     ' Example: "From E. Hartford Team\From Me" -> "From Me" inside parent folder
     SenderRules = Array( _
         Array("BT-WFPROD@cdmsmithonline.onmicrosoft.com", "From CDM\From Workflow Mailer"), _
+        Array("Dispatcher23@cdmsmith.com", "From CDM\From Dispatcher"), _
+        Array("HR-BenefitsTeam@cdmsmith.com", "From CDM\From Benefits Team"), _
         Array("bouchardab@cdmsmith.com", "From CDM\From Anthony Bouchard"), _
         Array("hyresdf@cdmsmith.com", "From E. Hartford Team\From Me"), _
         Array("no-reply@spaceiq.com", "From SpaceIQ Seating"), _
@@ -94,9 +95,9 @@ Sub SetupDailyTask()
         taskItem.Subject = "Email Summary Monitor"
     End If
     
-    ' Set the reminder for 3:15 PM
+    ' Set the reminder for 11:59 PM
     taskItem.ReminderSet = True
-    taskItem.ReminderTime = DateValue(Now) & " 16:30:00"
+    taskItem.ReminderTime = DateValue(Now) & " 23:59:00"
     
     ' If it's already past 3:15 PM today, move it to tomorrow
     If taskItem.ReminderTime < Now Then
@@ -248,7 +249,6 @@ Sub SendDailySummary()
     Dim item As Variant
     Dim bodyText As String
     
-    
     ' 1. Check if the collection even exists first
     If MovedEmails Is Nothing Then
         Debug.Print "No emails moved today (Collection is Nothing)."
@@ -285,8 +285,6 @@ Sub SendDailySummary()
     Set MovedEmails = Nothing
 
 End Sub
-
-
 
 '=============================
 ' Helper Function: Day Suffix
