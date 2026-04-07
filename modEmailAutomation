@@ -49,6 +49,7 @@ Sub InitializeRules()
     ' Example: "From E. Hartford Team\From Me" -> "From Me" inside parent folder
     SenderRules = Array( _
         Array("BT-WFPROD@cdmsmithonline.onmicrosoft.com", "From CDM\From Workflow Mailer"), _
+        Array("CDMSmith-noreply@degreed.com", "From CDM\From CDM Smith University"), _
         Array("Dispatcher23@cdmsmith.com", "From CDM\From Dispatcher"), _
         Array("HR-BenefitsTeam@cdmsmith.com", "From CDM\From Benefits Team"), _
         Array("bouchardab@cdmsmith.com", "From CDM\From Anthony Bouchard"), _
@@ -59,6 +60,7 @@ Sub InitializeRules()
         Array("MarComm-disp@cdmsmith.com", "From CDM\From Marketing and Communications"), _
         Array("mentorship@togetherplatform.com", "From CDM\From Career Compass"), _
         Array("ITHelp@cdmsmith.com", "From CDM\From IT"), _
+        Array("Payroll-US@cdmsmith.com", "Deleted Items"), _
         Array("HR-Communications@cdmsmith.com", "From CDM\From HR") _
     )
     
@@ -134,13 +136,14 @@ Sub ProcessMail(mail As Outlook.MailItem)
         End If
     End If
     
-    Debug.Print senderAddress
+    ' Debug.Print senderAddress
+    Debug.Print mail.SenderEmailAddress
     
     '-----------------------------
     ' Check against sender rules
     '-----------------------------
     For i = LBound(SenderRules) To UBound(SenderRules)
-        Debug.Print mail.SenderEmailAddress
+        ' Debug.Print mail.SenderEmailAddress
         If LCase(senderAddress) = LCase(SenderRules(i)(0)) Then
         
             MoveEmail mail, SenderRules(i)(1)
@@ -155,7 +158,7 @@ Sub ProcessMail(mail As Outlook.MailItem)
     ' This might get removed if never used
     '-------------------------------------
     For i = LBound(SubjectRules) To UBound(SubjectRules)
-        Debug.Print mail.SenderEmailAddress
+        ' Debug.Print mail.SenderEmailAddress
         If InStr(1, mail.Subject, SubjectRules(i)(0), vbTextCompare) > 0 Then
         
             MoveEmail mail, SubjectRules(i)(1)
