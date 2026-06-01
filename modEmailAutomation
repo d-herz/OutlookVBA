@@ -53,7 +53,6 @@ Sub InitializeRules()
         Array("Dispatcher23@cdmsmith.com", "From CDM\From Dispatcher"), _
         Array("HR-BenefitsTeam@cdmsmith.com", "From CDM\From Benefits Team"), _
         Array("bouchardab@cdmsmith.com", "From CDM\From Anthony Bouchard"), _
-        Array("hyresdf@cdmsmith.com", "From E. Hartford Team\From Me"), _
         Array("no-reply@spaceiq.com", "From SpaceIQ Seating"), _
         Array("notifications_cdmsmith@engage.mail.microsoft", "From CDM\From Viva Engage"), _
         Array("noreply_cdmsmith@engage.mail.microsoft", "From CDM\From Viva Engage"), _
@@ -61,9 +60,10 @@ Sub InitializeRules()
         Array("mentorship@togetherplatform.com", "From CDM\From Career Compass"), _
         Array("ITHelp@cdmsmith.com", "From CDM\From IT"), _
         Array("Payroll-US@cdmsmith.com", "Deleted Items"), _
+        Array("WallT@cdmsmith.com", "From CDM\From Timothy Wall"), _
         Array("HR-Communications@cdmsmith.com", "From CDM\From HR") _
     )
-    
+    '
     '-----------------------------
     ' Define subject-based rules
     '-----------------------------
@@ -88,7 +88,7 @@ Sub SetupDailyTask()
     
     ' Look for existing monitor task
     On Error Resume Next
-    Set taskItem = folder.Items("Email Summary Monitor")
+    Set taskItem = folder.items("Email Summary Monitor")
     On Error GoTo 0
     
     ' Create it if it doesn't exist
@@ -288,6 +288,53 @@ Sub SendDailySummary()
     Set MovedEmails = Nothing
 
 End Sub
+
+Sub ProcessMissedEmails()
+
+    Dim ns As Outlook.NameSpace
+    Dim inbox As Outlook.folder
+    Dim items As Outlook.items
+    Dim mail As Object
+    Dim cutoffTime As Date
+    
+    '-------------------------------------
+    ' Define how far back to look
+    ' (Adjust as needed)
+    '-------------------------------------
+    cutoffTime = Now - 3 ' Last 3 days
+    
+    Set ns = Application.GetNamespace("MAPI")
+    Set inbox = ns.GetDefaultFolder(olFolderInbox)
+    Set items = inbox.items
+    
+    ' Sort newest first (important for performance)
+    items.Sort "[ReceivedTime]", True
+    
+    Debug.Print "Running startup sweep for emails since: " & cutoffTime
+    
+    '-------------------------------------
+    ' Loop through Inbox items
+    '-------------------------------------
+    For Each mail In items
+        
+        ' Stop once we reach older emails
+        If TypeOf mail Is Outlook.MailItem Then
+            
+            If mail.ReceivedTime < cutoffTime Then
+                Exit For
+            End If
+            
+            ' Process using your existing logic
+            ProcessMail mail
+            
+        End If
+        
+    Next mail
+    
+    Debug.Print "Startup sweep complete."
+
+End Sub
+
 
 '=============================
 ' Helper Function: Day Suffix
